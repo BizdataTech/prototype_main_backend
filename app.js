@@ -4,6 +4,7 @@ import cookieParser from "cookie-parser";
 import userRouter from "./routers/userRouter.js";
 import productRouter from "./routers/productRouter.js";
 import categoryRouter from "./routers/categoryRouter.js";
+import AttributeRouter from "./routers/attribute.routes.js";
 import cartRouter from "./routers/cartRouter.js";
 import brandRouter from "./routers/brandRouter.js";
 import adminUserRouter from "./routers/adminUserRouter.js";
@@ -42,6 +43,7 @@ app.use("/api", adminUserRouter);
 app.use("/api", userRouter);
 app.use("/api", productRouter);
 app.use("/api", categoryRouter);
+app.use("/api", AttributeRouter);
 app.use("/api", cartRouter);
 app.use("/api", brandRouter);
 
