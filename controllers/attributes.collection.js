@@ -36,6 +36,21 @@ export const getCollections = async (req, res) => {
   }
 };
 
+export const getCollectionsForCategory = async (req, res) => {
+  try {
+    let collections =
+      await AttributeCollectionModel.find().select("collection_name");
+
+    return res.json({ collections });
+  } catch (error) {
+    console.log(
+      "failed to fetch attribute collections for categories:",
+      error.message,
+    );
+    return res.status(500).json({ message: error.message });
+  }
+};
+
 export const createAttributeCollection = async (req, res) => {
   let { collection_name } = req.body;
   try {

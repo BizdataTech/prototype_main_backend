@@ -6,14 +6,17 @@ import {
   deleteAttributeCollection,
   getCollectionData,
   getCollections,
+  getCollectionsForCategory,
   updateAttribute,
 } from "../controllers/attributes.collection.js";
 import authenticateAdmin from "../middlewares/authenticateAdmin.js";
 
 const router = express.Router();
 
+router.get("/attribute-collections/category", getCollectionsForCategory);
 router.get("/attribute-collections/:id", getCollectionData);
 router.get("/attribute-collections", getCollections);
+
 router.post(
   "/attribute-collections",
   authenticateAdmin,
