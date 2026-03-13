@@ -11,7 +11,7 @@ const Schema = new mongoose.Schema(
           enum: ["text", "select", "multi-select"],
           default: "text",
         },
-        options: [{ label: String, value: String }],
+        options: [String],
       },
     ],
   },
