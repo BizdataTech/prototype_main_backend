@@ -1,4 +1,4 @@
-import Brand from "../models/brandModel.js";
+import Brand from "../models/brand.model.js";
 import cloudinary from "../utils/cloudinary.js";
 
 export const createBrand = async (req, res) => {
@@ -17,10 +17,13 @@ export const createBrand = async (req, res) => {
           return res.status(500).json({ message: "Brand Failed to Upload" });
         let brand = await Brand.create({
           brand_name,
-          image: result.secure_url,
+          image: {
+            url: result.secure_url,
+            public_id: result.public_id,
+          },
         });
-        return res.json({ message: "New Brand Created", brand });
-      }
+        return res.json({ message: "Brand Created" });
+      },
     );
 
     upload_data.end(file.buffer);

@@ -1,3 +1,4 @@
+import AttributeCollectionModel from "../models/attributes.model.js";
 import Category from "../models/categoryModel.js";
 
 export const getCategoryById = async (req, res) => {
@@ -42,7 +43,37 @@ export const getCategories = async (req, res) => {
         });
       case "product-category":
         categories = await Category.find().populate("parent");
-        return res.status(200).json({ success: true, categories });
+        let result = await Category.aggregate([
+          {
+            $lookup: {
+              from: "categories",
+              localField: "parent",
+              foreignField: "_id",
+              as: "parent",
+            },
+          },
+          {
+            $unwind: {
+              path: "$parent",
+              preserveNullAndEmptyArrays: true,
+            },
+          },
+          {
+            $project: {
+              __v: 0,
+              isDeleted: 0,
+              isNavItem: 0,
+              attribute_collection: 0,
+              "parent.__v": 0,
+              "parent.isDeleted": 0,
+              "parent.isNavItem": 0,
+              "parent.attribute_collection": 0,
+            },
+          },
+        ]);
+        return res
+          .status(200)
+          .json({ success: true, categories: result, result: result });
       case "parent":
         const level = parseInt(req.query.level);
         let parentCategories = [];
@@ -77,6 +108,29 @@ export const getCategories = async (req, res) => {
   } catch (error) {
     console.log("error:", error.message);
     res.status(500).json({ message: error.message });
+  }
+};
+
+export const getCategoryAttributeCollection = async (req, res) => {
+  try {
+    let attributeCollectionId = (
+      await Category.findOne({
+        _id: req.params.id,
+      }).select("attribute_collection")
+    ).attribute_collection;
+
+    let doc = await AttributeCollectionModel.findOne({
+      _id: attributeCollectionId,
+    });
+
+    let attributes = doc ? doc.attributes : [];
+    return res.json({ attributes });
+  } catch (error) {
+    console.log(
+      "failed to fetch attribute collection of the category:",
+      error.message,
+    );
+    return res.status(500).json({ message: error.message });
   }
 };
 

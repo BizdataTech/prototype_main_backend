@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import userRouter from "./routers/userRouter.js";
-import productRouter from "./routers/productRouter.js";
+import productRouter from "./routers/product.router.js";
 import categoryRouter from "./routers/categoryRouter.js";
 import AttributeRouter from "./routers/attribute.routes.js";
 import cartRouter from "./routers/cartRouter.js";
