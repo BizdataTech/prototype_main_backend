@@ -6,8 +6,8 @@ import productRouter from "./routers/product.router.js";
 import categoryRouter from "./routers/categoryRouter.js";
 import AttributeRouter from "./routers/attribute.routes.js";
 import cartRouter from "./routers/cartRouter.js";
-import brandRouter from "./routers/brandRouter.js";
-import adminUserRouter from "./routers/adminUserRouter.js";
+import brandRouter from "./routers/brand.router.js";
+import adminUserRouter from "./routers/adminUser.router.js";
 import path from "path";
 
 const app = express();
