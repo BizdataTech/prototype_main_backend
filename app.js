@@ -8,6 +8,8 @@ import AttributeRouter from "./routers/attribute.routes.js";
 import cartRouter from "./routers/cartRouter.js";
 import brandRouter from "./routers/brand.router.js";
 import adminUserRouter from "./routers/adminUser.router.js";
+import blockRouter from "./routers/content.block.routes.js";
+import homeSectionRouter from "./routers/home.sections.routes.js";
 import path from "path";
 
 const app = express();
@@ -46,5 +48,7 @@ app.use("/api", categoryRouter);
 app.use("/api", AttributeRouter);
 app.use("/api", cartRouter);
 app.use("/api", brandRouter);
+app.use("/api", blockRouter);
+app.use("/api", homeSectionRouter);
 
 export default app;

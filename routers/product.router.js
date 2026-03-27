@@ -12,13 +12,13 @@ import multer from "multer";
 
 const router = express.Router();
 
-router.post("/auto-products", upload.array("image"), createProduct);
+router.post("/products", upload.array("image"), createProduct);
 router.patch(
   "/products/:id",
   multer({ storage: multer.memoryStorage() }).array("image"),
   updateProduct,
 );
-router.get("/auto-products", getProducts);
+router.get("/products", getProducts);
 router.get("/products/:id", getProduct);
 router.delete("/products/:id", authenticateAdmin, deleteProduct);
 

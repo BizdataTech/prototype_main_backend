@@ -5,22 +5,39 @@ import cloudinary from "../utils/cloudinary.js";
 export const getProducts = async (req, res) => {
   try {
     let { filter, current_page, category } = req.query;
+    let products;
     switch (filter) {
       case "admin-products":
         let limit = 10;
         let total_products = await Product.find().countDocuments();
-        let products = await Product.find()
-          .populate("brand")
-          .populate("category");
+        products = await Product.find().populate("brand").populate("category");
         return res.json({
           products,
           total_pages: Math.ceil(total_products / limit),
         });
+      case "admin-products-category":
+        products = await Product.aggregate([
+          { $match: { category: new mongoose.Types.ObjectId(category) } },
+          {
+            $addFields: {
+              image: { $arrayElemAt: ["$images", 0] },
+            },
+          },
+          { $sort: { createdAt: -1 } },
+          {
+            $project: {
+              product_title: 1,
+              image: "$image.url",
+            },
+          },
+        ]);
+        return res.json({ products });
       default:
         break;
     }
   } catch (error) {
     res.status(500).json({ message: error.message });
+    console.log(error.message);
   }
 };
 

@@ -102,6 +102,19 @@ export const getCategories = async (req, res) => {
         }
         console.log("mathcing category:", matchingCategory);
         return res.status(200).json({ success: true, matchingCategory });
+
+      case "section-block":
+        categories = await Category.aggregate([
+          { $match: { isDeleted: false } },
+          {
+            $project: {
+              title: 1,
+              level: 1,
+              parent: 1,
+            },
+          },
+        ]);
+        return res.json({ categories });
       default:
         break;
     }
