@@ -44,7 +44,9 @@ export const HeroBanner = Section.discriminator(
 export const ProductListing = Section.discriminator(
   "product_listing",
   new mongoose.Schema({
+    title: String,
     limit: Number,
+    layout: { type: String, enum: ["horizontal", "grid"] },
     reference: ReferenceSchema,
   }),
 );
