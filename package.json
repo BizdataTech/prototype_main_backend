@@ -4,7 +4,7 @@
   "main": "server.js",
   "type": "module",
   "scripts": {
-    "dev": "cross-env ENV_FILE_NAME=development nodemon server.js",
+    "dev": "nodemon server.js",
     "start": "node server.js",
     "create": "nodemon create_product.js",
     "products": "nodemon sampleCreation.js"

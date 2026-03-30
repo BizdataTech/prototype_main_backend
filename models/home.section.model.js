@@ -26,7 +26,7 @@ const ReferenceSchema = new mongoose.Schema(
 
 const BannerItemSchema = new mongoose.Schema(
   {
-    url: String,
+    image: { url: String, public_id: String },
     redirection: Boolean,
     reference: ReferenceSchema,
   },
@@ -36,7 +36,7 @@ const BannerItemSchema = new mongoose.Schema(
 export const HeroBanner = Section.discriminator(
   "hero_banner",
   new mongoose.Schema({
-    carousel: Boolean,
+    banner_type: { type: String, enum: ["single", "carousel"] },
     banners: [BannerItemSchema],
   }),
 );
