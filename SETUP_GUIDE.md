@@ -26,23 +26,7 @@ This installs all required packages including:
 
 ### 2. Create Environment Configuration
 
-Create a `.env` file (or `.env.development` for dev mode) in the root directory with the following variables:
-
-```
-PORT=1000
-CONNECTION_STRING=mongodb://your_mongodb_connection_string
-JWT_SECRET=your_jwt_secret_key
-CLOUDINARY_NAME=your_cloudinary_name
-CLOUDINARY_API_KEY=your_cloudinary_api_key
-CLOUDINARY_API_SECRET=your_cloudinary_api_secret
-```
-
-**Configuration Details:**
-
-- `PORT` - Server port (default: 1000)
-- `CONNECTION_STRING` - MongoDB connection URL
-- `JWT_SECRET` - Secret key for JWT token signing
-- `CLOUDINARY_*` - Cloudinary API credentials for image uploads
+Create a `.env` file (or `.env.development` for dev mode) in the root directory with the required variables like PORT, CONNECTION_STRING and other confidentails data.
 
 ### 3. Start the Server
 
@@ -50,21 +34,6 @@ CLOUDINARY_API_SECRET=your_cloudinary_api_secret
 
 ```bash
 npm run dev
-```
-
-**Production Mode:**
-
-```bash
-npm start
-```
-
-### 4. Sample Scripts (Optional)
-
-Generate sample data:
-
-```bash
-npm run products     # Create sample products
-npm run create       # Create sample product data
 ```
 
 ## CORS Configuration
@@ -80,13 +49,6 @@ To add more origins, edit the `allowedURLs` array in `app.js`.
 ## Database Connection
 
 MongoDB connection is established via Mongoose in `server.js`. The application waits for successful database connection before starting the server.
-
-**Success Message:**
-
-```
-Database connected
-Server listening for request via port 1000
-```
 
 ## Available Routes
 
