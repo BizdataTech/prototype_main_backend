@@ -10,7 +10,7 @@ export const getProducts = async (req, res) => {
       case "admin-products":
         let limit = 10;
         let total_products = await Product.find().countDocuments();
-        products = await Product.find().populate("brand").populate("category");
+        products = await Product.find().populate("brand").populate("category").sort({createdAt: -1})
         return res.json({
           products,
           total_pages: Math.ceil(total_products / limit),
