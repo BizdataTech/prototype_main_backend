@@ -4,6 +4,7 @@ import {
   deleteCategory,
   getCategories,
   getCategoryAttributeCollection,
+  getCategoryVariants,
   getCategoryById,
   updateCategory,
 } from "../controllers/categoryController.js";
@@ -14,6 +15,7 @@ router.get(
   "/categories/:id/attribute-collections",
   getCategoryAttributeCollection,
 );
+router.get("/auto-categories/:id/variants", getCategoryVariants);
 router.get("/auto-categories/:id", getCategoryById);
 router.post("/auto-categories", createCategory);
 router.put("/auto-categories/:id", updateCategory);
