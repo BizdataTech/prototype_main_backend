@@ -4,6 +4,12 @@ import Category from "../models/categoryModel.js";
 import { HeroBanner, Section } from "../models/home.section.model.js";
 import uploadToCloudinary from "../utils/uploadToCloudinary.js";
 
+/**
+ * Retrieves all section types defined in the database.
+ * @param {Object} req - Express request.
+ * @param {Object} res - Express response.
+ * @returns {Promise<Object>} JSON response with the sections.
+ */
 export const getSections = async (req, res) => {
   try {
     let sections = await Section.find().select("section_type");
@@ -14,6 +20,12 @@ export const getSections = async (req, res) => {
   }
 };
 
+/**
+ * Retrieves reference items depending on the given section type (e.g., content-block or category).
+ * @param {Object} req - Express request containing the section type in params.
+ * @param {Object} res - Express response.
+ * @returns {Promise<Object>} JSON response with the references list.
+ */
 export const getReferences = async (req, res) => {
   try {
     let { type } = req.params;
@@ -55,6 +67,12 @@ export const getReferences = async (req, res) => {
   }
 };
 
+/**
+ * Creates a new home section (like hero_banner). Uploads image files to Cloudinary and saves configuration.
+ * @param {Object} req - Express request containing section data in body and files in files.
+ * @param {Object} res - Express response.
+ * @returns {Promise<Object>} JSON response indicating success or failure.
+ */
 export const createSection = async (req, res) => {
   try {
     const { section_type } = req.body;

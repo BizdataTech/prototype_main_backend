@@ -1,6 +1,12 @@
 import mongoose from "mongoose";
 import ContentBlock from "../models/content.block.model.js";
 
+/**
+ * Retrieves a single content block with its associated products populated.
+ * @param {Object} req - Express request containing content block ID in params.
+ * @param {Object} res - Express response.
+ * @returns {Promise<Object>} JSON response with the block data.
+ */
 export const getBlockData = async (req, res) => {
   try {
     let block = (
@@ -44,6 +50,12 @@ export const getBlockData = async (req, res) => {
   }
 };
 
+/**
+ * Retrieves all content blocks along with a count of products they contain.
+ * @param {Object} req - Express request.
+ * @param {Object} res - Express response.
+ * @returns {Promise<Object>} JSON response with an array of block objects.
+ */
 export const getBlocks = async (req, res) => {
   try {
     let blocks = await ContentBlock.aggregate([
@@ -61,6 +73,12 @@ export const getBlocks = async (req, res) => {
   }
 };
 
+/**
+ * Creates a new content block.
+ * @param {Object} req - Express request containing content block data in body.
+ * @param {Object} res - Express response.
+ * @returns {Promise<Object>} JSON response indicating success.
+ */
 export const createContentBlock = async (req, res) => {
   try {
     let data = req.body;
@@ -72,6 +90,12 @@ export const createContentBlock = async (req, res) => {
   }
 };
 
+/**
+ * Updates an existing content block.
+ * @param {Object} req - Express request containing block ID in params and update payload in body.
+ * @param {Object} res - Express response.
+ * @returns {Promise<Object>} JSON response indicating success or failure.
+ */
 export const updateContentBlock = async (req, res) => {
   try {
     let { id } = req.params;
