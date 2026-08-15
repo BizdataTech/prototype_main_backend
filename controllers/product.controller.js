@@ -11,6 +11,9 @@ import xlsx from "xlsx";
 import Category from "../models/categoryModel.js";
 import Brand from "../models/brand.model.js";
 import sanitizeHtml from "sanitize-html";
+import Wishlist from "../models/wishlistModel.js";
+import Cart from "../models/cartModel.js";
+import ContentBlock from "../models/content.block.model.js";
 
 /**
  * Retrieves a list of products based on query filters (e.g. pagination or category matches).
@@ -443,7 +446,31 @@ export const updateProduct = async (req, res) => {
  */
 export const deleteProduct = async (req, res) => {
   try {
-    await Product.deleteOne({ _id: req.params.id });
+    const id = req.params.id;
+    await Product.deleteOne({ _id: id });
+
+    // Clean up references in Wishlists
+    await Wishlist.updateMany(
+      { "items.productId": id },
+      { $pull: { items: { productId: id } } }
+    );
+
+    // Clean up references in Carts and update totals
+    const carts = await Cart.find({ "items.productId": id });
+    for (const cart of carts) {
+      cart.items = cart.items.filter(
+        (item) => item.productId && item.productId.toString() !== id.toString()
+      );
+      cart.cartTotal = cart.items.reduce((sum, item) => sum + (item.totalAmount || 0), 0);
+      await cart.save();
+    }
+
+    // Clean up references in ContentBlocks
+    await ContentBlock.updateMany(
+      { products: id },
+      { $pull: { products: id } }
+    );
+
     return res.json({ message: "Product Deleted" });
   } catch (error) {
     console.log("failed to delete product:", error.message);
@@ -457,7 +484,32 @@ export const bulkDeleteProducts = async (req, res) => {
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ message: "No product IDs provided for deletion" });
     }
+    const stringIds = ids.map(id => id.toString());
+
     await Product.deleteMany({ _id: { $in: ids } });
+
+    // Clean up references in Wishlists
+    await Wishlist.updateMany(
+      { "items.productId": { $in: ids } },
+      { $pull: { items: { productId: { $in: ids } } } }
+    );
+
+    // Clean up references in Carts and update totals
+    const carts = await Cart.find({ "items.productId": { $in: ids } });
+    for (const cart of carts) {
+      cart.items = cart.items.filter(
+        (item) => item.productId && !stringIds.includes(item.productId.toString())
+      );
+      cart.cartTotal = cart.items.reduce((sum, item) => sum + (item.totalAmount || 0), 0);
+      await cart.save();
+    }
+
+    // Clean up references in ContentBlocks
+    await ContentBlock.updateMany(
+      { products: { $in: ids } },
+      { $pull: { products: { $in: ids } } }
+    );
+
     return res.json({ message: `${ids.length} products deleted successfully` });
   } catch (error) {
     console.log("failed to bulk delete products:", error.message);

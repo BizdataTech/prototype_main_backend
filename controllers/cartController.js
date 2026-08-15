@@ -8,21 +8,66 @@ import Cart from "../models/cartModel.js";
 import Product from "../models/product.model.js";
 
 /**
+ * Manually populates the cart items, resolving parent products and variant details
+ * to ensure that frontend receives the expected productId shape with parentId.
+ */
+export const populateCart = async (cart) => {
+  if (!cart) return null;
+  const cartObj = cart.toObject ? cart.toObject() : cart;
+  if (!cartObj.items) return cartObj;
+
+  const populatedItems = [];
+  for (const item of cartObj.items) {
+    if (!item.productId) continue;
+
+    // Check if productId is a parent product
+    let parent = await Product.findById(item.productId).populate("brand").populate("category").lean();
+    if (parent) {
+      populatedItems.push({
+        ...item,
+        productId: parent
+      });
+    } else {
+      // Check if productId is a variant ID inside a parent product
+      const parentWithVariant = await Product.findOne({ "variants._id": item.productId }).populate("brand").populate("category").lean();
+      if (parentWithVariant) {
+        const variant = parentWithVariant.variants.find(v => v._id.toString() === item.productId.toString());
+        if (variant) {
+          populatedItems.push({
+            ...item,
+            productId: {
+              _id: variant._id,
+              price: variant.price,
+              sale_price: variant.sale_price,
+              stock: variant.stock,
+              images: variant.image?.url ? [variant.image.url] : parentWithVariant.images.map(img => img.url),
+              parentId: {
+                _id: parentWithVariant._id,
+                product_title: parentWithVariant.product_title,
+                brand: parentWithVariant.brand ? (parentWithVariant.brand.brand_name || parentWithVariant.brand) : "",
+                description: parentWithVariant.description,
+                images: parentWithVariant.images.map(img => img.url)
+              }
+            }
+          });
+        }
+      }
+    }
+  }
+
+  cartObj.items = populatedItems;
+  return cartObj;
+};
+
+/**
  * Retrieves the shopping cart for the logged-in client user.
- * Populates products and parent variants for correct checkout context.
- * 
- * @param {Object} req - Express request containing logged-in user profile in req.user
- * @param {Object} res - Express response
  */
 export const getCart = async (req, res) => {
   let { _id } = req.user;
   try {
-    const cart = await Cart.findOne({ userId: _id }).populate({
-      path: "items.productId",
-      model: "product"
-    });
-    console.log("cart:", cart);
-    res.json({ cart: cart });
+    const cart = await Cart.findOne({ userId: _id });
+    const populated = await populateCart(cart);
+    res.json({ cart: populated });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -30,10 +75,6 @@ export const getCart = async (req, res) => {
 
 /**
  * Adds an item to the client user's shopping cart.
- * If the user does not have a cart, creates a new cart; otherwise, appends to the existing cart.
- * 
- * @param {Object} req - Express request containing productId in body and user session in req.user
- * @param {Object} res - Express response
  */
 export const addToCart = async (req, res) => {
   let { productId } = req.body;
@@ -43,14 +84,23 @@ export const addToCart = async (req, res) => {
   try {
     let product = await Product.findOne({ _id: productId });
     if (!product) {
+      product = await Product.findOne({ "variants._id": productId });
+    }
+    if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
-    let price = product.price;
+
+    let price = Number(product.price || product.sale_price || 0);
+    if (product._id.toString() !== productId.toString()) {
+      const variant = product.variants.find(v => v._id.toString() === productId.toString());
+      if (variant) {
+        price = Number(variant.price || variant.sale_price || 0);
+      }
+    }
+
     let totalAmount = price * quantity;
-    
     let cart = await Cart.findOne({ userId: _id });
     
-    // Create new cart if none exists for the user
     if (!cart) {
       let item = {
         productId,
@@ -62,13 +112,10 @@ export const addToCart = async (req, res) => {
         items: [item],
         cartTotal: totalAmount,
       });
-      new_cart = await new_cart.populate({
-        path: "items.productId",
-        model: "product"
-      });
+      const populated = await populateCart(new_cart);
       return res.status(200).json({
         message: "Product Successfully Added to Cart",
-        cart: new_cart,
+        cart: populated,
       });
     }
 
@@ -91,14 +138,8 @@ export const addToCart = async (req, res) => {
     cart.cartTotal += totalAmount;
     await cart.save();
 
-    cart = await cart.populate({
-      path: "items.productId",
-      model: "product"
-    });
-
-    res
-      .status(200)
-      .json({ message: "Product Successfully Added to Cart", cart: cart });
+    const populated = await populateCart(cart);
+    res.status(200).json({ message: "Product Successfully Added to Cart", cart: populated });
   } catch (error) {
     console.log("error:", error.message);
     res.status(500).json({ message: error.message });
@@ -128,12 +169,8 @@ export const removeFromCart = async (req, res) => {
       await cart.save();
     }
 
-    cart = await cart.populate({
-      path: "items.productId",
-      model: "product"
-    });
-
-    res.status(200).json({ message: "Product removed from cart", cart });
+    const populated = await populateCart(cart);
+    res.status(200).json({ message: "Product removed from cart", cart: populated });
   } catch (error) {
     console.log("error:", error.message);
     res.status(500).json({ message: error.message });
@@ -160,11 +197,22 @@ export const updateQuantity = async (req, res) => {
     if (itemIndex > -1) {
       let product = await Product.findOne({ _id: productId });
       if (!product) {
+        product = await Product.findOne({ "variants._id": productId });
+      }
+      if (!product) {
         return res.status(404).json({ message: "Product not found" });
       }
 
+      let price = Number(product.price || product.sale_price || 0);
+      if (product._id.toString() !== productId.toString()) {
+        const variant = product.variants.find(v => v._id.toString() === productId.toString());
+        if (variant) {
+          price = Number(variant.price || variant.sale_price || 0);
+        }
+      }
+
       let oldAmount = cart.items[itemIndex].totalAmount;
-      let newAmount = product.price * quantity;
+      let newAmount = price * quantity;
 
       cart.items[itemIndex].quantity = quantity;
       cart.items[itemIndex].totalAmount = newAmount;
@@ -173,12 +221,8 @@ export const updateQuantity = async (req, res) => {
       await cart.save();
     }
 
-    cart = await cart.populate({
-      path: "items.productId",
-      model: "product"
-    });
-
-    res.status(200).json({ message: "Cart updated successfully", cart });
+    const populated = await populateCart(cart);
+    res.status(200).json({ message: "Cart updated successfully", cart: populated });
   } catch (error) {
     console.log("error:", error.message);
     res.status(500).json({ message: error.message });
@@ -187,9 +231,6 @@ export const updateQuantity = async (req, res) => {
 
 /**
  * Clears the user's cart by deleting their Cart document.
- * 
- * @param {Object} req - Express request containing logged-in user in req.user
- * @param {Object} res - Express response
  */
 export const clearCart = async (req, res) => {
   try {

@@ -1,5 +1,5 @@
 import User from "../models/userModel.js";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import getToken from "../utils/getToken.js";
 import verifyPassword from "../utils/verifyPassword.js";
@@ -24,17 +24,32 @@ export const verifyState = (req, res) => {
  * @returns {Promise<Object>} JSON response indicating success or failure.
  */
 export const signup = async (req, res) => {
-  const { username, email, password } = req.body;
+  const { username, email, password, phone, pincode, locality, address, city, state } = req.body;
   try {
     let matchingUser = await User.findOne({ email });
     if (matchingUser) {
       return res.status(400).json({ message: "User already exists" });
     }
     const hashedPasword = await bcrypt.hash(password, 10);
+    
+    // Create the default address
+    const initialAddress = {
+      name: username,
+      phone,
+      pincode,
+      locality,
+      address,
+      city,
+      state,
+      addressType: "Home",
+      isDefault: true
+    };
+
     const new_user = await User.create({
       username,
       email,
       password: hashedPasword,
+      addresses: [initialAddress]
     });
     console.log("new user:", new_user);
 
@@ -178,12 +193,26 @@ export const getAddresses = async (req, res) => {
  */
 export const addAddress = async (req, res) => {
   try {
-    const { label, street, city, zip, country } = req.body;
-    if (!label || !street || !city || !zip || !country) {
-      return res.status(400).json({ message: "All address fields are required" });
+    const { _id, name, phone, pincode, locality, address, city, state, landmark, alternatePhone, addressType } = req.body;
+    if (!name || !phone || !pincode || !address || !city || !state) {
+      return res.status(400).json({ message: "Required address fields are missing" });
     }
     const user = await User.findById(req.user._id);
-    user.addresses.push({ label, street, city, zip, country });
+    
+    if (_id) {
+      // Update existing address
+      const addressIndex = user.addresses.findIndex(a => a._id.toString() === _id.toString());
+      if (addressIndex > -1) {
+        user.addresses[addressIndex] = { ...user.addresses[addressIndex].toObject(), name, phone, pincode, locality, address, city, state, landmark, alternatePhone, addressType: addressType || 'Home' };
+      } else {
+        return res.status(404).json({ message: "Address not found" });
+      }
+    } else {
+      // Create new address
+      const isDefault = user.addresses.length === 0;
+      user.addresses.push({ name, phone, pincode, locality, address, city, state, landmark, alternatePhone, addressType: addressType || 'Home', isDefault });
+    }
+    
     await user.save();
     return res.status(200).json({ success: true, addresses: user.addresses });
   } catch (error) {
