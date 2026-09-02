@@ -29,6 +29,8 @@ export const getBlockData = async (req, res) => {
         {
           $project: {
             title: 1,
+            block_type: 1,
+            category: 1,
             "products._id": 1,
             "products.product_title": 1,
             "products.image": "$products.image.url",
@@ -38,6 +40,8 @@ export const getBlockData = async (req, res) => {
           $group: {
             _id: "$_id",
             title: { $first: "$title" },
+            block_type: { $first: "$block_type" },
+            category: { $first: "$category" },
             products: { $push: "$products" },
           },
         },
@@ -62,6 +66,8 @@ export const getBlocks = async (req, res) => {
       {
         $project: {
           title: 1,
+          block_type: 1,
+          category: 1,
           products: { $size: "$products" },
         },
       },

@@ -210,7 +210,9 @@ export const getProduct = async (req, res) => {
           product_title: parent.product_title,
           brand: parent.brand ? (parent.brand.brand_name || parent.brand) : "",
           description: parent.description,
-          sections
+          sections,
+          variantOptions: parent.variantOptions,
+          variants: parent.variants
         }
       };
     } else {
@@ -229,7 +231,9 @@ export const getProduct = async (req, res) => {
           product_title: parent.product_title,
           brand: parent.brand ? (parent.brand.brand_name || parent.brand) : "",
           description: parent.description,
-          sections
+          sections,
+          variantOptions: parent.variantOptions,
+          variants: parent.variants
         }
       };
     }
@@ -318,7 +322,7 @@ export const createProduct = async (req, res) => {
     await Product.create({ ...data, images });
     res.json({ message: "product created" });
   } catch (error) {
-    console.log("error:", error.message);
+    console.log("error:", error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -447,6 +451,28 @@ export const updateProduct = async (req, res) => {
 export const deleteProduct = async (req, res) => {
   try {
     const id = req.params.id;
+    
+    const product = await Product.findById(id);
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    // Delete main images from Cloudinary
+    if (product.images && product.images.length > 0) {
+      const publicIds = product.images.map(img => img.public_id).filter(Boolean);
+      if (publicIds.length > 0) {
+        await Promise.all(publicIds.map(public_id => cloudinary.uploader.destroy(public_id)));
+      }
+    }
+
+    // Delete variant images from Cloudinary
+    if (product.variants && product.variants.length > 0) {
+      const variantPublicIds = product.variants.map(v => v.image?.public_id).filter(Boolean);
+      if (variantPublicIds.length > 0) {
+        await Promise.all(variantPublicIds.map(public_id => cloudinary.uploader.destroy(public_id)));
+      }
+    }
+
     await Product.deleteOne({ _id: id });
 
     // Clean up references in Wishlists
@@ -485,6 +511,23 @@ export const bulkDeleteProducts = async (req, res) => {
       return res.status(400).json({ message: "No product IDs provided for deletion" });
     }
     const stringIds = ids.map(id => id.toString());
+
+    // Fetch products to delete images
+    const products = await Product.find({ _id: { $in: ids } });
+    
+    let allPublicIds = [];
+    for (const product of products) {
+      if (product.images && product.images.length > 0) {
+        allPublicIds.push(...product.images.map(img => img.public_id).filter(Boolean));
+      }
+      if (product.variants && product.variants.length > 0) {
+        allPublicIds.push(...product.variants.map(v => v.image?.public_id).filter(Boolean));
+      }
+    }
+    
+    if (allPublicIds.length > 0) {
+      await Promise.all(allPublicIds.map(public_id => cloudinary.uploader.destroy(public_id)));
+    }
 
     await Product.deleteMany({ _id: { $in: ids } });
 

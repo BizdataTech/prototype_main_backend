@@ -9,6 +9,7 @@ const SectionSchema = new mongoose.Schema(
       },
     },
     order: Number,
+    active: { type: Boolean, default: true },
   },
   { discriminatorKey: "section_type" },
 );
@@ -27,6 +28,9 @@ const ReferenceSchema = new mongoose.Schema(
 const BannerItemSchema = new mongoose.Schema(
   {
     image: { url: String, public_id: String },
+    heading: String,
+    subtitle: String,
+    button_text: String,
     redirection: Boolean,
     reference: ReferenceSchema,
   },
@@ -54,6 +58,7 @@ export const ProductListing = Section.discriminator(
 export const MidPageBanner = Section.discriminator(
   "mid_page_banner",
   new mongoose.Schema({
+    banner_type: { type: String, enum: ["single", "carousel"] },
     column_count: Number,
     banners: [BannerItemSchema],
   }),
