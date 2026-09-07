@@ -3,15 +3,20 @@ import mongoose from "mongoose";
 const SectionSchema = new mongoose.Schema(
   {
     section_type: {
-      type: {
-        type: String,
-        enum: ["hero_banner", "product_listing", "mid_page_banner"],
-      },
+      type: String,
+      enum: ["hero_banner", "product_listing", "mid_page_banner"],
     },
     order: Number,
     active: { type: Boolean, default: true },
+    banner_type: { type: String, enum: ["single", "carousel"] },
+    column_count: Number,
+    title: String,
+    limit: Number,
+    layout: String,
+    banners: [],
+    reference: Object,
   },
-  { discriminatorKey: "section_type" },
+  { discriminatorKey: "section_type", strict: false },
 );
 
 export const Section = mongoose.model("section", SectionSchema);

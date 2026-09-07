@@ -13,8 +13,7 @@ import deleteFromCloudinary from "../utils/deleteFromCloudinary.js";
  */
 export const getSections = async (req, res) => {
   try {
-    // Don't populate reference.id — keep it as raw ObjectId string
-    // so the frontend can use it directly to call /api/content-blocks/:id
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
     let sections = await Section.find().sort("order");
     return res.json({ sections });
   } catch (err) {
@@ -82,6 +81,39 @@ export const getReferences = async (req, res) => {
   }
 };
 
+const parseBannersFromBody = (body, files = []) => {
+  let bannersBody = [];
+  if (Array.isArray(body.banners)) {
+    bannersBody = [...body.banners];
+  } else if (body.banners && typeof body.banners === "object") {
+    const keys = Object.keys(body.banners).sort((a, b) => parseInt(a) - parseInt(b));
+    keys.forEach(k => {
+      const idx = parseInt(k);
+      bannersBody[idx] = body.banners[k];
+    });
+  } else {
+    Object.keys(body).forEach(key => {
+      let match = key.match(/^banners\[(\d+)\]\[([^\]]+)\]$/);
+      if (match) {
+        let index = parseInt(match[1]);
+        let field = match[2];
+        if (!bannersBody[index]) bannersBody[index] = {};
+        bannersBody[index][field] = body[key];
+      }
+    });
+  }
+
+  (files || []).forEach(file => {
+    let match = file.fieldname?.match(/^banners\[(\d+)\]/);
+    if (match) {
+      let index = parseInt(match[1]);
+      if (!bannersBody[index]) bannersBody[index] = {};
+    }
+  });
+
+  return bannersBody;
+};
+
 /**
  * Creates a new home section (like hero_banner). Uploads image files to Cloudinary and saves configuration.
  * @param {Object} req - Express request containing section data in body and files in files.
@@ -92,44 +124,15 @@ export const createSection = async (req, res) => {
   try {
     const { section_type } = req.body;
 
-    // DEBUG: Log exactly what multer received
-    console.log("=== createSection DEBUG ===");
-    console.log("section_type:", section_type);
-    console.log("req.body keys:", Object.keys(req.body));
-    console.log("req.files count:", req.files?.length);
-    if (req.files) {
-      req.files.forEach((f, i) => console.log(`  file[${i}]: fieldname=${f.fieldname}, size=${f.size}, mimetype=${f.mimetype}`));
-    }
-    console.log("req.body:", JSON.stringify(req.body, null, 2));
-    console.log("=== END DEBUG ===");
     switch (section_type) {
       case "hero_banner":
       case "mid_page_banner":
-        // Multer v2 auto-parses banners[0][heading] into req.body.banners as a nested array.
-        // Handle both: already-parsed array OR flat keys (banners[0][field]).
-        let bannersBody = [];
-        if (Array.isArray(req.body.banners)) {
-          // Multer v2: already parsed into array of objects
-          bannersBody = req.body.banners;
-        } else {
-          // Fallback: flat keys like banners[0][heading]
-          Object.keys(req.body).forEach(key => {
-            let match = key.match(/^banners\[(\d+)\]\[([^\]]+)\]$/);
-            if (match) {
-              let index = parseInt(match[1]);
-              let field = match[2];
-              if (!bannersBody[index]) bannersBody[index] = {};
-              bannersBody[index][field] = req.body[key];
-            }
-          });
-        }
-
-        console.log("Parsed bannersBody:", JSON.stringify(bannersBody, null, 2));
+        let bannersBody = parseBannersFromBody(req.body, req.files);
 
         // Map uploaded files by their banner index (from fieldname: banners[0][image])
         let fileMap = {};
         (req.files || []).forEach(file => {
-          let match = file.fieldname.match(/^banners\[(\d+)\]/);
+          let match = file.fieldname?.match(/^banners\[(\d+)\]/);
           if (match) fileMap[parseInt(match[1])] = file;
         });
 
@@ -139,7 +142,7 @@ export const createSection = async (req, res) => {
           Object.entries(fileMap).map(async ([index, file]) => {
             try {
               const result = await uploadToCloudinary(file.buffer, "hero_banners");
-              uploadedMap[index] = { url: result.secure_url, public_id: result.public_id };
+              uploadedMap[parseInt(index)] = { url: `${result.secure_url}?t=${Date.now()}`, public_id: result.public_id };
             } catch (err) {
               console.log(`Failed to upload banner[${index}] image:`, err.message);
             }
@@ -163,10 +166,15 @@ export const createSection = async (req, res) => {
             let data = {};
             if (uploadedMap[i]) {
               data.image = uploadedMap[i];
+            } else if (obj.existing_image_url || obj.existingImageUrl) {
+              data.image = {
+                url: obj.existing_image_url || obj.existingImageUrl,
+                public_id: obj.existing_public_id || obj.existingPublicId || "",
+              };
             }
-            if (obj.heading) data.heading = obj.heading;
-            if (obj.subtitle) data.subtitle = obj.subtitle;
-            if (obj.button_text) data.button_text = obj.button_text;
+            data.heading = obj.heading || "";
+            data.subtitle = obj.subtitle || "";
+            data.button_text = obj.button_text || "";
             data.redirection = obj.redirection === "true" || obj.redirection === true;
             if (data.redirection && obj.id) {
               data.reference = {
@@ -177,12 +185,10 @@ export const createSection = async (req, res) => {
             }
             return data;
           })
-          .filter(Boolean);
+          .filter(b => b && b.image?.url);
 
         let { banner_type } = req.body;
         let count = await Section.countDocuments();
-
-        console.log("Creating section:", section_type, "banners:", JSON.stringify(banners, null, 2));
 
         if (section_type === "mid_page_banner") {
           await MidPageBanner.create({ section_type: "mid_page_banner", banner_type, banners, order: count });
@@ -209,23 +215,28 @@ const getSlugs = async (type, id) => {
   switch (type) {
     case "content-block":
       let block = await ContentBlock.findOne({ _id: id }).select("title");
-      slug = block.title.toLowerCase().replace(/\s+/g, "_");
+      slug = block?.title ? block.title.toLowerCase().replace(/\s+/g, "_") : "";
       break;
     case "category":
       let category = await Category.findOne({ _id: id }).select("title");
-      slug = category.title.toLowerCase().replace(/\s+/g, "_");
+      slug = category?.title ? category.title.toLowerCase().replace(/\s+/g, "_") : "";
       break;
     default:
       break;
   }
-  console.log("slug:", slug);
   return slug;
 };
 
 export const updateSection = async (req, res) => {
   try {
     let { id } = req.params;
-    await Section.findByIdAndUpdate(id, req.body);
+    let updateData = { ...req.body };
+    if (typeof updateData.reference === "string") {
+      try {
+        updateData.reference = JSON.parse(updateData.reference);
+      } catch (e) {}
+    }
+    await Section.findByIdAndUpdate(id, updateData, { new: true, strict: false });
     return res.json({ message: "Section updated successfully" });
   } catch (error) {
     console.log("failed to update section:", error.message);
@@ -242,26 +253,12 @@ export const updateBanners = async (req, res) => {
     let section = await Section.findById(id);
     if (!section) return res.status(404).json({ message: "Section not found" });
 
-    // Parse banners from formData — handle Multer v2 auto-parsed array
-    let bannersBody = [];
-    if (Array.isArray(req.body.banners)) {
-      bannersBody = req.body.banners;
-    } else {
-      Object.keys(req.body).forEach(key => {
-        let match = key.match(/^banners\[(\d+)\]\[([^\]]+)\]$/);
-        if (match) {
-          let index = parseInt(match[1]);
-          let field = match[2];
-          if (!bannersBody[index]) bannersBody[index] = {};
-          bannersBody[index][field] = req.body[key];
-        }
-      });
-    }
+    let bannersBody = parseBannersFromBody(req.body, req.files);
 
     // Map uploaded files by fieldname index
     let fileMap = {};
     (req.files || []).forEach(file => {
-      let match = file.fieldname.match(/^banners\[(\d+)\]/);
+      let match = file.fieldname?.match(/^banners\[(\d+)\]/);
       if (match) fileMap[parseInt(match[1])] = file;
     });
 
@@ -273,14 +270,16 @@ export const updateBanners = async (req, res) => {
         if (fileMap[i]) {
           // New file — upload it
           const uploaded = await uploadToCloudinary(fileMap[i].buffer, "hero_banners");
-          data.image = { url: uploaded.secure_url, public_id: uploaded.public_id };
-        } else if (obj.existing_image_url) {
+          data.image = { url: `${uploaded.secure_url}?t=${Date.now()}`, public_id: uploaded.public_id };
+        } else if (obj.existing_image_url || obj.existingImageUrl) {
           // Keep existing
-          data.image = { url: obj.existing_image_url, public_id: obj.existing_public_id || "" };
+          const url = obj.existing_image_url || obj.existingImageUrl;
+          const public_id = obj.existing_public_id || obj.existingPublicId || "";
+          data.image = { url, public_id };
         }
-        if (obj.heading) data.heading = obj.heading;
-        if (obj.subtitle) data.subtitle = obj.subtitle;
-        if (obj.button_text) data.button_text = obj.button_text;
+        data.heading = obj.heading || "";
+        data.subtitle = obj.subtitle || "";
+        data.button_text = obj.button_text || "";
         data.redirection = obj.redirection === "true" || obj.redirection === true;
         if (data.redirection && obj.id) {
           const slug = obj.id ? await getSlugs(obj.type, obj.id).catch(() => "") : "";
@@ -289,18 +288,49 @@ export const updateBanners = async (req, res) => {
         return data;
       })
     );
+    banners = banners.filter(b => b && b.image?.url);
 
-    // Delete Cloudinary images that were removed
+    // Delete Cloudinary images that were replaced or removed
     const oldPublicIds = (section.banners || []).map(b => b.image?.public_id).filter(Boolean);
     const newPublicIds = banners.map(b => b.image?.public_id).filter(Boolean);
     const toDelete = oldPublicIds.filter(pid => !newPublicIds.includes(pid));
-    await Promise.allSettled(toDelete.map(pid => deleteFromCloudinary(pid)));
+    if (toDelete.length > 0) {
+      await Promise.allSettled(toDelete.map(pid => deleteFromCloudinary(pid)));
+    }
 
     const { banner_type } = req.body;
-    await Section.findByIdAndUpdate(id, { banner_type, banners });
+    await Section.findByIdAndUpdate(id, { banner_type, banners }, { new: true, strict: false });
     return res.json({ message: "Section updated successfully" });
   } catch (error) {
     console.log("failed to update banners:", error.message);
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+export const deleteSingleBanner = async (req, res) => {
+  try {
+    let { id, index } = req.params;
+    let idx = parseInt(index);
+    let section = await Section.findById(id);
+    if (!section) return res.status(404).json({ message: "Section not found" });
+
+    if (!section.banners || idx < 0 || idx >= section.banners.length) {
+      return res.status(400).json({ message: "Invalid banner index" });
+    }
+
+    let targetBanner = section.banners[idx];
+    if (targetBanner?.image?.public_id) {
+      await deleteFromCloudinary(targetBanner.image.public_id).catch((err) => {
+        console.log("Cloudinary single banner delete error:", err.message);
+      });
+    }
+
+    section.banners.splice(idx, 1);
+    await section.save();
+
+    return res.json({ message: "Banner deleted successfully", banners: section.banners });
+  } catch (error) {
+    console.log("failed to delete single banner:", error.message);
     return res.status(500).json({ message: error.message });
   }
 };

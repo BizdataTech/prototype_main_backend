@@ -7,6 +7,7 @@ import {
   deleteSection,
   updateSection,
   updateBanners,
+  deleteSingleBanner,
   reorderSections,
 } from "../controllers/home.section.controller.js";
 import multer from "multer";
@@ -23,6 +24,7 @@ router.post(
 );
 router.put("/home-sections/reorder", reorderSections);
 router.put("/home-sections/:id/banners", multer({ storage: multer.memoryStorage() }).any(), updateBanners);
+router.delete("/home-sections/:id/banners/:index", deleteSingleBanner);
 router.put("/home-sections/:id", updateSection);
 router.delete("/home-sections/:id", deleteSection);
 

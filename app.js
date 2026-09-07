@@ -1,4 +1,4 @@
-﻿import express from "express";
+import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import userRouter from "./routers/userRouter.js";
@@ -26,19 +26,25 @@ const allowedURLs = [
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedURLs.includes(origin)) {
+      if (
+        !origin ||
+        allowedURLs.includes(origin) ||
+        origin.startsWith("http://localhost:") ||
+        origin.startsWith("http://127.0.0.1:")
+      ) {
         callback(null, true);
       } else {
         callback(new Error("request not allowed"));
       }
     },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   }),
 );
 
 app.use(cookieParser());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 app.use(
   "/sample_images",
