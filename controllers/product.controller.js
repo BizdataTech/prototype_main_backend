@@ -14,6 +14,7 @@ import sanitizeHtml from "sanitize-html";
 import Wishlist from "../models/wishlistModel.js";
 import Cart from "../models/cartModel.js";
 import ContentBlock from "../models/content.block.model.js";
+import Variant from "../models/variants.model.js";
 
 /**
  * Retrieves a list of products based on query filters (e.g. pagination or category matches).
@@ -204,7 +205,7 @@ export const getProduct = async (req, res) => {
         _id: variant._id,
         price: variant.price,
         stock: variant.stock,
-        images: variant.image?.url ? [variant.image.url] : parent.images.map(img => img.url),
+        images: parent.images ? parent.images.map(img => img.url) : [],
         parent: {
           _id: parent._id,
           product_title: parent.product_title,
@@ -223,9 +224,7 @@ export const getProduct = async (req, res) => {
         _id: repVariant ? repVariant._id : parent._id,
         price: repVariant ? repVariant.price : parent.price,
         stock: repVariant ? repVariant.stock : parent.stock,
-        images: repVariant && repVariant.image?.url
-          ? [repVariant.image.url]
-          : parent.images.map(img => img.url),
+        images: parent.images ? parent.images.map(img => img.url) : [],
         parent: {
           _id: parent._id,
           product_title: parent.product_title,
@@ -337,107 +336,108 @@ export const createProduct = async (req, res) => {
 export const updateProduct = async (req, res) => {
   try {
     let data = req.body;
-    let ids;
     let files = req.files || [];
 
-    let generalFiles = files.filter(f => f.fieldname === "image");
-    let variationFiles = files.filter(f => f.fieldname.startsWith("variation_image_"));
+    const generalFiles = files.filter(f => f.fieldname === "image");
+    const variationFiles = files.filter(f => f.fieldname.startsWith("variation_image_"));
 
-    // Remove deleted images from Cloudinary
+    const id = req.params.id;
+    let query = {};
+
+    // ── 1. Handle cancelled (deleted) images ────────────────────────────────
+    let cancelledIds = [];
     if (data.cancelledPubliIds) {
-      ids = JSON.parse(data.cancelledPubliIds || "[]");
-      await Promise.all(
-        ids.map((public_id) => cloudinary.uploader.destroy(public_id)),
-      );
+      try {
+        cancelledIds = JSON.parse(data.cancelledPubliIds);
+      } catch (_) { cancelledIds = []; }
+      if (cancelledIds.length) {
+        await Promise.all(cancelledIds.map(pid => cloudinary.uploader.destroy(pid)));
+      }
+      delete data.cancelledPubliIds;
     }
 
+    // ── 2. Upload newly added product images ────────────────────────────────
     let newImages = [];
-    // Upload newly added images to Cloudinary
-    if (generalFiles.length >= 1) {
-      let cloudinary_results = await Promise.all(
-        generalFiles.map((file) => {
-          return new Promise((resolve, reject) => {
-            let stream = cloudinary.uploader.upload_stream(
+    if (generalFiles.length) {
+      const results = await Promise.all(
+        generalFiles.map(file =>
+          new Promise((resolve, reject) => {
+            const stream = cloudinary.uploader.upload_stream(
               { folder: "prototype_products" },
-              (error, result) => {
-                if (error) reject(error);
-                else resolve(result);
-              },
+              (err, result) => { if (err) reject(err); else resolve(result); }
             );
             stream.end(file.buffer);
-          });
-        }),
+          })
+        )
       );
-      cloudinary_results.forEach(({ secure_url, public_id }) =>
-        newImages.push({
-          url: secure_url,
-          public_id: public_id,
-        }),
-      );
+      newImages = results.map(r => ({ url: r.secure_url, public_id: r.public_id }));
     }
 
-    let query = {};
-    let id = req.params.id;
-
-    // Filter out canceled images and append new ones
-    if ((ids && ids.length) || newImages.length) {
-      let filteredImages = (
-        await Product.findOne({ _id: id }).select("images")
-      ).images.filter((obj) => !(ids || []).includes(obj.public_id));
-      query.images = [...filteredImages, ...newImages];
+    // ── 3. Rebuild images array: existing (minus cancelled) + new uploads ───
+    if (cancelledIds.length || newImages.length) {
+      const existing = await Product.findOne({ _id: id }).select("images").lean();
+      const kept = (existing?.images || []).filter(img => !cancelledIds.includes(img.public_id));
+      query.images = [...kept, ...newImages];
     }
 
-    // Map attribute updates
+    // ── 4. Parse structured fields ──────────────────────────────────────────
     if (data.attributes) {
-      if (typeof data.attributes === "string") data.attributes = JSON.parse(data.attributes);
-      query.attributes = data.attributes;
+      query.attributes = typeof data.attributes === "string"
+        ? JSON.parse(data.attributes) : data.attributes;
       delete data.attributes;
     }
-    
+
     if (data.variantOptions) {
-      if (typeof data.variantOptions === "string") data.variantOptions = JSON.parse(data.variantOptions);
-      query.variantOptions = data.variantOptions;
+      query.variantOptions = typeof data.variantOptions === "string"
+        ? JSON.parse(data.variantOptions) : data.variantOptions;
       delete data.variantOptions;
     }
 
     if (data.variants) {
-      if (typeof data.variants === "string") data.variants = JSON.parse(data.variants);
-      
+      let variants = typeof data.variants === "string"
+        ? JSON.parse(data.variants) : data.variants;
+
       // Upload new variation images
-      for (let file of variationFiles) {
-        let match = file.fieldname.match(/variation_image_(\d+)/);
+      for (const file of variationFiles) {
+        const match = file.fieldname.match(/variation_image_(\d+)/);
         if (match) {
-          let index = parseInt(match[1]);
-          if (data.variants[index]) {
-            let upload_res = await new Promise((resolve, reject) => {
-              let stream = cloudinary.uploader.upload_stream(
+          const index = parseInt(match[1]);
+          if (variants[index]) {
+            const uploadRes = await new Promise((resolve, reject) => {
+              const stream = cloudinary.uploader.upload_stream(
                 { folder: "prototype_products" },
-                (error, result) => {
-                  if (error) reject(error);
-                  else resolve(result);
-                },
+                (err, result) => { if (err) reject(err); else resolve(result); }
               );
               stream.end(file.buffer);
             });
-            data.variants[index].image = {
-              url: upload_res.secure_url,
-              public_id: upload_res.public_id,
-            };
+            variants[index].image = { url: uploadRes.secure_url, public_id: uploadRes.public_id };
           }
         }
       }
-      query.variants = data.variants;
+      query.variants = variants;
       delete data.variants;
     }
 
-    Object.entries(data).forEach(([key, value]) => (query[key] = value));
-    console.log("query:", query);
+    // ── 5. Cast numeric fields to avoid storing strings ──────────────────────
+    const numericFields = ["price", "sale_price", "stock"];
+    numericFields.forEach(field => {
+      if (data[field] !== undefined && data[field] !== "") {
+        data[field] = Number(data[field]);
+      }
+    });
 
-    await Product.updateOne({ _id: req.params.id }, { $set: query });
+    // ── 6. Merge remaining scalar fields into query ──────────────────────────
+    // Skip internal keys that should not be saved as-is
+    const skipKeys = new Set(["cancelledPubliIds"]);
+    Object.entries(data).forEach(([key, value]) => {
+      if (!skipKeys.has(key)) query[key] = value;
+    });
+
+    await Product.updateOne({ _id: id }, { $set: query });
 
     return res.json({ message: "Product Updated" });
   } catch (error) {
-    console.log("failed to update product:", error.message);
+    console.error("failed to update product:", error.message);
     return res.status(500).json({ message: error.message });
   }
 };
@@ -633,37 +633,65 @@ export const importProducts = async (req, res) => {
         if (imagesString) {
           const rawUrls = imagesString.split(",").map((url) => url.trim()).filter(Boolean);
           
-          if (uploadImagesToCloudinary) {
-            for (const url of rawUrls) {
-              try {
+          for (const url of rawUrls) {
+            try {
+              if (url.startsWith('http')) {
                 const uploadResult = await cloudinary.uploader.upload(url, { folder: "prototype_products" });
                 images.push({ url: uploadResult.secure_url, public_id: uploadResult.public_id });
-              } catch (imgErr) {
-                console.warn(`Failed to upload image ${url} for row ${rowIndex}:`, imgErr.message);
-                // Fallback to storing raw URL if upload fails
+              } else {
                 images.push({ url: url });
               }
+            } catch (imgErr) {
+              console.warn(`Failed to upload image ${url} for row ${rowIndex}:`, imgErr.message);
+              // Fallback to storing raw URL if upload fails
+              images.push({ url: url });
             }
-          } else {
-            images = rawUrls.map(url => ({ url }));
           }
         }
 
         // Handle Categories
         let categoryId = null;
         if (categoryName) {
-          // WooCommerce categories can be comma separated, we'll take the first one or split it.
-          // For now, let's match the first category if multiple are provided.
-          const mainCat = categoryName.split(",")[0].trim();
-          let cat = await Category.findOne({ title: new RegExp(`^${mainCat}$`, "i") });
-          if (!cat) {
-            cat = await Category.create({
-              title: mainCat,
-              slug: mainCat.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-              level: 1,
-            });
+          const mainCatStr = categoryName.split(",")[0].trim();
+          const catParts = mainCatStr.split(">").map(p => p.trim()).filter(Boolean);
+          
+          let currentParentId = null;
+          let currentLevel = 1;
+          let lastCatId = null;
+          let slugPrefix = "";
+
+          for (const part of catParts) {
+            let query = { title: new RegExp(`^${part}$`, "i"), level: currentLevel };
+            if (currentParentId) {
+              query.parent = currentParentId;
+            }
+            
+            let cat = await Category.findOne(query);
+            
+            if (!cat) {
+              slugPrefix = slugPrefix ? `${slugPrefix}-${part}` : part;
+              let slug = slugPrefix.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)+/g, '');
+              
+              let existingSlug = await Category.findOne({ slug });
+              if (existingSlug) {
+                slug = `${slug}-${Math.floor(Math.random() * 10000)}`;
+              }
+
+              cat = await Category.create({
+                title: part,
+                slug,
+                level: currentLevel,
+                parent: currentParentId || undefined,
+              });
+            } else {
+              slugPrefix = slugPrefix ? `${slugPrefix}-${part}` : part;
+            }
+            
+            currentParentId = cat._id;
+            lastCatId = cat._id;
+            currentLevel++;
           }
-          categoryId = cat._id;
+          categoryId = lastCatId;
         }
 
         // Handle Brands
@@ -681,8 +709,10 @@ export const importProducts = async (req, res) => {
         for (let j = 1; j <= 5; j++) {
           const nameKey = `attribute ${j} name`;
           const valKey = `attribute ${j} value`;
-          if (normalizedRow[nameKey] && normalizedRow[valKey]) {
-            combination[normalizedRow[nameKey]] = normalizedRow[valKey];
+          const valKeyS = `attribute ${j} value(s)`;
+          const val = normalizedRow[valKey] || normalizedRow[valKeyS];
+          if (normalizedRow[nameKey] && val) {
+            combination[normalizedRow[nameKey]] = val;
           }
         }
 
@@ -749,6 +779,37 @@ export const importProducts = async (req, res) => {
           if (!parent) {
             throw new Error(`Parent product with SKU '${pSku}' not found in database.`);
           }
+
+          // Process variantOptions to ensure frontend selection works
+          if (!parent.variantOptions) parent.variantOptions = [];
+          for (const [attrName, attrValue] of Object.entries(combination)) {
+            let variantDoc = await Variant.findOne({ title: new RegExp(`^${attrName}$`, "i") });
+            if (!variantDoc) {
+              variantDoc = await Variant.create({
+                title: attrName,
+                color: false,
+                values: [{ label: attrValue, value: attrValue }]
+              });
+            } else {
+              const valExists = variantDoc.values.some(v => String(v.value).toLowerCase() === String(attrValue).toLowerCase());
+              if (!valExists) {
+                variantDoc.values.push({ label: attrValue, value: attrValue });
+                await variantDoc.save();
+              }
+            }
+
+            let parentOpt = parent.variantOptions.find(opt => String(opt.variantId) === String(variantDoc._id));
+            if (!parentOpt) {
+              parent.variantOptions.push({ variantId: variantDoc._id, values: [attrValue] });
+              parent.markModified('variantOptions');
+            } else {
+              const valIncludes = parentOpt.values.some(v => String(v).toLowerCase() === String(attrValue).toLowerCase());
+              if (!valIncludes) {
+                parentOpt.values.push(attrValue);
+                parent.markModified('variantOptions');
+              }
+            }
+          }
           
           const variantObj = {
             sku,
@@ -763,8 +824,10 @@ export const importProducts = async (req, res) => {
           const existingIndex = sku ? parent.variants.findIndex(v => v.sku === sku) : -1;
           if (existingIndex !== -1) {
             Object.assign(parent.variants[existingIndex], variantObj);
+            parent.markModified('variants');
           } else {
             parent.variants.push(variantObj);
+            parent.markModified('variants');
           }
           
           await parent.save();
@@ -814,7 +877,24 @@ export const exportProducts = async (req, res) => {
 
     for (const prod of products) {
       const imagesStr = (prod.images || []).map((img) => img.url).join(",");
-      const categoryName = prod.category ? prod.category.title : "";
+      let categoryName = "";
+      if (prod.category) {
+        // Build category hierarchy path
+        let currentCat = prod.category;
+        let pathParts = [currentCat.title];
+        while (currentCat.parent) {
+          // find parent category in the DB
+          let pCat = await Category.findById(currentCat.parent).select("title parent");
+          if (pCat) {
+            pathParts.unshift(pCat.title);
+            currentCat = pCat;
+          } else {
+            break;
+          }
+        }
+        categoryName = pathParts.join(" > ");
+      }
+      
       const brandName = prod.brand ? prod.brand.brand_name : "";
 
       if (prod.product_type === "Simple" || !prod.product_type) {
