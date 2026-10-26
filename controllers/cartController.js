@@ -37,6 +37,7 @@ export const populateCart = async (cart) => {
             ...item,
             productId: {
               _id: variant._id,
+              product_title: parentWithVariant.product_title,
               price: variant.price,
               sale_price: variant.sale_price,
               stock: variant.stock,

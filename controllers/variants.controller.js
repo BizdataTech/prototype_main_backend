@@ -1,4 +1,6 @@
 import Variant from "../models/variants.model.js";
+import Category from "../models/categoryModel.js";
+import Product from "../models/product.model.js";
 
 /**
  * Creates a new product variant.
@@ -64,6 +66,19 @@ export const deleteVariant = async (req, res) => {
       return res.status(404).json({ message: "Variant not found" });
     }
     await Variant.findByIdAndDelete(id);
+
+    // Clean up references in Categories
+    await Category.updateMany(
+      { variants: id },
+      { $pull: { variants: id } }
+    );
+
+    // Clean up references in Products
+    await Product.updateMany(
+      { "variantOptions.variantId": id },
+      { $pull: { variantOptions: { variantId: id } } }
+    );
+
     return res.json({ message: "Variant Deleted Successfully" });
   } catch (error) {
     console.error("Error deleting variant:", error.message);

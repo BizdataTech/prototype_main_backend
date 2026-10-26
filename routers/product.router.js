@@ -25,7 +25,7 @@ router.patch(
 );
 router.get("/products", getProducts);
 router.get("/products/:id", getProduct);
-router.post("/products/bulk-delete", authenticateAdmin, bulkDeleteProducts);
-router.delete("/products/:id", authenticateAdmin, deleteProduct);
+router.post("/products/bulk-delete", bulkDeleteProducts);
+router.delete("/products/:id", deleteProduct);
 
 export default router;

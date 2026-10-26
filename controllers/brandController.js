@@ -4,6 +4,7 @@
  */
 
 import Brand from "../models/brand.model.js";
+import Product from "../models/product.model.js";
 import cloudinary from "../utils/cloudinary.js";
 
 /**
@@ -141,6 +142,10 @@ export const deleteBrand = async (req, res) => {
     
     // Delete the brand document
     await Brand.findByIdAndDelete(id);
+
+    // Clean up references in Products
+    await Product.updateMany({ brand: id }, { $unset: { brand: 1 } });
+
     return res.json({ message: "Brand Deleted" });
   } catch (error) {
     console.log("failed to delete brand:", error.message);

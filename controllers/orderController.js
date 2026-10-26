@@ -1,5 +1,11 @@
+import mongoose from 'mongoose';
 import Order from '../models/orderModel.js';
 import Cart from '../models/cartModel.js';
+import Product from '../models/product.model.js';
+import User from '../models/userModel.js';
+import { sendOrderEmail } from '../utils/sendEmail.js';
+import { sendOrderSMS } from '../utils/sendSMS.js';
+import { sendOrderWhatsApp } from '../utils/sendWhatsApp.js';
 
 export const createOrder = async (req, res) => {
   try {
@@ -18,6 +24,64 @@ export const createOrder = async (req, res) => {
     // Clear cart after order
     await Cart.findOneAndUpdate({ userId }, { items: [], cartTotal: 0 });
 
+    // Fetch customer details for notification
+    let customerUser = null;
+    try {
+      if (userId) {
+        customerUser = await User.findById(userId).lean();
+      }
+    } catch (uErr) {
+      console.warn('[Notify] Could not find user details:', uErr.message);
+    }
+
+    // Build notification items list (resolving full product & variant data)
+    let notificationItems = [];
+    try {
+      const populatedOrder = await populateOrder(savedOrder);
+      notificationItems = (populatedOrder.items || []).map((item) => {
+        const prod = item.productId || {};
+        let name = prod.product_title || 'Product';
+        let image = '';
+        if (prod.images && prod.images.length > 0) {
+          image = typeof prod.images[0] === 'string' ? prod.images[0] : prod.images[0]?.url || '';
+        }
+        if (prod.parentId) {
+          const parentTitle = prod.parentId.product_title || '';
+          if (parentTitle && parentTitle !== name) {
+            name = `${parentTitle} - ${name}`;
+          }
+          if (!image && prod.parentId.images?.length > 0) {
+            image = typeof prod.parentId.images[0] === 'string' ? prod.parentId.images[0] : prod.parentId.images[0]?.url || '';
+          }
+        }
+        return {
+          name,
+          quantity: item.quantity,
+          price: item.price || prod.sale_price || prod.price || 0,
+          image,
+        };
+      });
+    } catch (notifErr) {
+      console.error('[Notify] Failed to build item list:', notifErr.message);
+      notificationItems = savedOrder.items.map((i) => ({
+        name: 'Product',
+        quantity: i.quantity,
+        price: i.price,
+        image: '',
+      }));
+    }
+
+    // Send email, SMS & WhatsApp notifications (non-blocking)
+    sendOrderEmail(savedOrder, notificationItems, customerUser).catch((err) =>
+      console.error('[Email] Order notification failed:', err.message)
+    );
+    sendOrderSMS(savedOrder, notificationItems, customerUser).catch((err) =>
+      console.error('[SMS] Order notification failed:', err.message)
+    );
+    sendOrderWhatsApp(savedOrder, notificationItems, customerUser).catch((err) =>
+      console.error('[WhatsApp] Order notification failed:', err.message)
+    );
+
     res.status(201).json({ success: true, order: savedOrder });
   } catch (error) {
     console.error('Error creating order:', error);
@@ -25,16 +89,71 @@ export const createOrder = async (req, res) => {
   }
 };
 
+/**
+ * Manually populates order items, resolving both parent products and variant items
+ * so that frontend receives full product and parentId data.
+ */
+export const populateOrder = async (order) => {
+  if (!order) return null;
+  const orderObj = order.toObject ? order.toObject() : order;
+  if (!orderObj.items) return orderObj;
+
+  const populatedItems = [];
+  for (const item of orderObj.items) {
+    if (!item.productId) continue;
+
+    let prodId = item.productId._id || item.productId;
+    let parent = await Product.findById(prodId).populate('brand').populate('category').lean();
+    if (parent) {
+      populatedItems.push({
+        ...item,
+        productId: parent
+      });
+    } else {
+      const parentWithVariant = await Product.findOne({ 'variants._id': prodId }).populate('brand').populate('category').lean();
+      if (parentWithVariant) {
+        const variant = parentWithVariant.variants.find(v => v._id.toString() === prodId.toString());
+        if (variant) {
+          populatedItems.push({
+            ...item,
+            productId: {
+              _id: variant._id,
+              product_title: parentWithVariant.product_title,
+              price: variant.price,
+              sale_price: variant.sale_price,
+              stock: variant.stock,
+              images: variant.image?.url ? [variant.image.url] : parentWithVariant.images.map(img => img.url),
+              parentId: {
+                _id: parentWithVariant._id,
+                product_title: parentWithVariant.product_title,
+                brand: parentWithVariant.brand ? (parentWithVariant.brand.brand_name || parentWithVariant.brand) : '',
+                description: parentWithVariant.description,
+                images: parentWithVariant.images.map(img => img.url)
+              }
+            }
+          });
+          continue;
+        }
+      }
+      populatedItems.push(item);
+    }
+  }
+
+  orderObj.items = populatedItems;
+  return orderObj;
+};
+
 export const getOrderById = async (req, res) => {
   try {
     const { id } = req.params;
-    const order = await Order.findById(id).populate('items.productId');
+    const order = await Order.findById(id);
     
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
-    
-    res.status(200).json({ success: true, order });
+
+    const populated = await populateOrder(order);
+    res.status(200).json({ success: true, order: populated });
   } catch (error) {
     console.error('Error fetching order:', error);
     res.status(500).json({ success: false, message: 'Server Error' });
@@ -44,7 +163,8 @@ export const getOrderById = async (req, res) => {
 export const getUserOrders = async (req, res) => {
   try {
     const { userId } = req.params;
-    const orders = await Order.find({ userId }).populate('items.productId').sort({ createdAt: -1 });
+    const rawOrders = await Order.find({ userId }).sort({ createdAt: -1 });
+    const orders = await Promise.all(rawOrders.map(o => populateOrder(o)));
     
     res.status(200).json({ success: true, orders });
   } catch (error) {
@@ -75,12 +195,10 @@ export const getAllOrders = async (req, res) => {
     }
     
     if (search) {
-      const mongoose = require('mongoose');
       if (mongoose.Types.ObjectId.isValid(search)) {
         query._id = search;
       } else {
         // Find users by name first to match userId
-        const User = require('../models/userModel.js').default;
         const users = await User.find({ name: { $regex: search, $options: 'i' } });
         if (users.length > 0) {
           query.userId = { $in: users.map(u => u._id) };

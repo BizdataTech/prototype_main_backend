@@ -142,7 +142,7 @@ export const createSection = async (req, res) => {
           Object.entries(fileMap).map(async ([index, file]) => {
             try {
               const result = await uploadToCloudinary(file.buffer, "hero_banners");
-              uploadedMap[parseInt(index)] = { url: `${result.secure_url}?t=${Date.now()}`, public_id: result.public_id };
+              uploadedMap[parseInt(index)] = { url: result.secure_url, public_id: result.public_id };
             } catch (err) {
               console.log(`Failed to upload banner[${index}] image:`, err.message);
             }
@@ -270,7 +270,7 @@ export const updateBanners = async (req, res) => {
         if (fileMap[i]) {
           // New file — upload it
           const uploaded = await uploadToCloudinary(fileMap[i].buffer, "hero_banners");
-          data.image = { url: `${uploaded.secure_url}?t=${Date.now()}`, public_id: uploaded.public_id };
+          data.image = { url: uploaded.secure_url, public_id: uploaded.public_id };
         } else if (obj.existing_image_url || obj.existingImageUrl) {
           // Keep existing
           const url = obj.existing_image_url || obj.existingImageUrl;

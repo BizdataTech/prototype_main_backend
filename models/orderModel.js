@@ -32,11 +32,18 @@ const orderSchema = new mongoose.Schema(
     shippingAddress: {
       firstName: String,
       lastName: String,
+      name: String,
+      phone: String,
+      pincode: String,
+      postalCode: String,
+      locality: String,
       address: String,
       city: String,
-      postalCode: String,
+      state: String,
       country: String,
-      phone: String,
+      landmark: String,
+      alternatePhone: String,
+      addressType: String,
       email: String
     },
     paymentMethod: {

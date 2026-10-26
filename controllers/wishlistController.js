@@ -40,13 +40,13 @@ export const populateWishlist = async (wishlist) => {
               price: variant.price,
               sale_price: variant.sale_price,
               stock: variant.stock,
-              images: variant.image?.url ? [variant.image.url] : parentWithVariant.images.map(img => img.url),
+              images: variant.image?.url ? [variant.image.url] : (parentWithVariant.images || []).map(img => (typeof img === "string" ? img : img?.url)).filter(Boolean),
               parentId: {
                 _id: parentWithVariant._id,
                 product_title: parentWithVariant.product_title,
                 brand: parentWithVariant.brand ? (parentWithVariant.brand.brand_name || parentWithVariant.brand) : "",
                 description: parentWithVariant.description,
-                images: parentWithVariant.images.map(img => img.url)
+                images: (parentWithVariant.images || []).map(img => (typeof img === "string" ? img : img?.url)).filter(Boolean)
               }
             }
           });

@@ -1,4 +1,5 @@
 import AttributeCollectionModel from "../models/attributes.model.js";
+import Category from "../models/categoryModel.js";
 
 /**
  * Fetches a single attribute collection by its ID.
@@ -97,6 +98,10 @@ export const createAttributeCollection = async (req, res) => {
 export const deleteAttributeCollection = async (req, res) => {
   try {
     await AttributeCollectionModel.deleteOne({ _id: req.params.coll_id });
+    await Category.updateMany(
+      { attribute_collection: req.params.coll_id },
+      { $unset: { attribute_collection: 1 } }
+    );
     return res.json({ message: "Attribute Collection Deleted" });
   } catch (error) {
     console.log("Failed to delete attribute collection :", error.message);

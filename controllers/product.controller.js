@@ -15,6 +15,7 @@ import Wishlist from "../models/wishlistModel.js";
 import Cart from "../models/cartModel.js";
 import ContentBlock from "../models/content.block.model.js";
 import Variant from "../models/variants.model.js";
+import { Section } from "../models/home.section.model.js";
 
 /**
  * Retrieves a list of products based on query filters (e.g. pagination or category matches).
@@ -102,7 +103,7 @@ export const getProducts = async (req, res) => {
               stock: firstVariant ? firstVariant.stock : product.stock,
               images: firstVariant && firstVariant.image?.url
                 ? [firstVariant.image.url]
-                : product.images.map(img => img.url),
+                : (product.images || []).map(img => (typeof img === "string" ? img : img?.url)).filter(Boolean),
             }
           };
         });
@@ -132,7 +133,7 @@ export const getProducts = async (req, res) => {
               stock: firstVariant ? firstVariant.stock : product.stock,
               images: firstVariant && firstVariant.image?.url
                 ? [firstVariant.image.url]
-                : product.images.map(img => img.url),
+                : (product.images || []).map(img => (typeof img === "string" ? img : img?.url)).filter(Boolean),
             }
           };
         });
@@ -203,12 +204,17 @@ export const getProduct = async (req, res) => {
     if (variant) {
       clientProduct = {
         _id: variant._id,
+        product_title: parent.product_title,
         price: variant.price,
+        sale_price: variant.sale_price,
         stock: variant.stock,
-        images: parent.images ? parent.images.map(img => img.url) : [],
+        images: variant.image?.url
+          ? [variant.image.url, ...(parent.images ? parent.images.map(img => img.url).filter(u => u !== variant.image.url) : [])]
+          : (parent.images ? parent.images.map(img => img.url) : []),
         parent: {
           _id: parent._id,
           product_title: parent.product_title,
+          product_type: parent.product_type,
           brand: parent.brand ? (parent.brand.brand_name || parent.brand) : "",
           description: parent.description,
           sections,
@@ -222,12 +228,15 @@ export const getProduct = async (req, res) => {
 
       clientProduct = {
         _id: repVariant ? repVariant._id : parent._id,
+        product_title: parent.product_title,
         price: repVariant ? repVariant.price : parent.price,
+        sale_price: repVariant ? repVariant.sale_price : parent.sale_price,
         stock: repVariant ? repVariant.stock : parent.stock,
         images: parent.images ? parent.images.map(img => img.url) : [],
         parent: {
           _id: parent._id,
           product_title: parent.product_title,
+          product_type: parent.product_type,
           brand: parent.brand ? (parent.brand.brand_name || parent.brand) : "",
           description: parent.description,
           sections,
@@ -497,6 +506,12 @@ export const deleteProduct = async (req, res) => {
       { $pull: { products: id } }
     );
 
+    // Clean up references in Sections
+    await Section.updateMany(
+      { "banners.reference.id": id },
+      { $unset: { "banners.$[].reference": 1 } }
+    );
+
     return res.json({ message: "Product Deleted" });
   } catch (error) {
     console.log("failed to delete product:", error.message);
@@ -526,7 +541,7 @@ export const bulkDeleteProducts = async (req, res) => {
     }
     
     if (allPublicIds.length > 0) {
-      await Promise.all(allPublicIds.map(public_id => cloudinary.uploader.destroy(public_id)));
+      await Promise.allSettled(allPublicIds.map(public_id => cloudinary.uploader.destroy(public_id)));
     }
 
     await Product.deleteMany({ _id: { $in: ids } });
@@ -551,6 +566,12 @@ export const bulkDeleteProducts = async (req, res) => {
     await ContentBlock.updateMany(
       { products: { $in: ids } },
       { $pull: { products: { $in: ids } } }
+    );
+
+    // Clean up references in Sections
+    await Section.updateMany(
+      { "banners.reference.id": { $in: ids } },
+      { $unset: { "banners.$[].reference": 1 } }
     );
 
     return res.json({ message: `${ids.length} products deleted successfully` });

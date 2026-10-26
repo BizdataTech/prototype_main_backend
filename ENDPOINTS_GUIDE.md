@@ -61,6 +61,7 @@ All endpoints are prefixed with `/api`
 | GET    | `/auto-categories/:id`                  | No   | Get category by ID                   |
 | GET    | `/categories/:id/attribute-collections` | No   | Get category's attribute collections |
 | POST   | `/auto-categories`                      | No   | Create category                      |
+| POST   | `/auto-categories/bulk-delete`          | No   | Bulk delete categories by `{ ids }`  |
 | PUT    | `/auto-categories/:id`                  | No   | Update category                      |
 | DELETE | `/auto-categories/:id`                  | No   | Delete category                      |
 
