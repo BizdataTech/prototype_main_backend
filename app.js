@@ -16,12 +16,12 @@ import wishlistRouter from "./routers/wishlistRouter.js";
 import orderRouter from "./routers/orderRouter.js";
 import path from "path";
 
+
+
 const app = express();
 const allowedURLs = [
-  "https://ecom-prototype-one.vercel.app",
-  "http://localhost:5173",
+  "https://prototype-main-frontend.vercel.app",
   "http://localhost:3000",
-  "http://localhost",
   "http://127.0.0.1",
 ];
 
@@ -36,8 +36,13 @@ app.use((req, res, next) => {
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow any incoming origin dynamically for development and production
-      callback(null, true);
+      // Allow requests without an Origin header
+      // (e.g., some server-to-server requests)
+      if (!origin || allowedURLs.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
